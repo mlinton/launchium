@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -38,6 +39,68 @@ type ChromiumManager struct {
 	profileType  string
 	profileFlags string
 	err          error
+}
+
+// Parse command line arguments and handle direct commands
+func parseCommandLine() (string, string, bool) {
+    // Define commands
+    launchCmd := flag.NewFlagSet("launch", flag.ExitOnError)
+    launchProfile := launchCmd.String("profile", "default", "Profile name to launch")
+    
+    cleanCmd := flag.NewFlagSet("clean", flag.ExitOnError)
+    cleanProfile := cleanCmd.String("profile", "default", "Profile name to clean")
+    
+    listCmd := flag.NewFlagSet("list", flag.ExitOnError)
+    
+    versionCmd := flag.NewFlagSet("version", flag.ExitOnError)
+    
+    // Check if any arguments were provided
+    if len(os.Args) < 2 {
+        return "", "", false
+    }
+    
+    // Parse the command
+    switch os.Args[1] {
+    case "launch":
+        launchCmd.Parse(os.Args[2:])
+        return "launch", *launchProfile, true
+    case "clean":
+        cleanCmd.Parse(os.Args[2:])
+        return "clean", *cleanProfile, true
+    case "list":
+        listCmd.Parse(os.Args[2:])
+        return "list", "", true
+    case "version":
+        versionCmd.Parse(os.Args[2:])
+        return "version", "", true
+    case "help":
+        printHelp()
+        os.Exit(0)
+    default:
+        return "", "", false
+    }
+    
+    return "", "", false
+}
+
+// Print help information
+func printHelp() {
+    fmt.Println("Launchium - Chromium Profile Manager")
+    fmt.Println("\nUsage:")
+    fmt.Println("  launchium [command] [options]")
+    fmt.Println("\nCommands:")
+    fmt.Println("  launch    Launch browser with specified profile")
+    fmt.Println("  clean     Clean a specific profile")
+    fmt.Println("  list      List all available profiles")
+    fmt.Println("  version   Show version information")
+    fmt.Println("  help      Show this help message")
+    fmt.Println("\nOptions for 'launch' and 'clean':")
+    fmt.Println("  -profile  Specify the profile name (default: 'default')")
+    fmt.Println("\nExamples:")
+    fmt.Println("  launchium                    Start the interactive UI")
+    fmt.Println("  launchium launch -profile=work  Launch browser with 'work' profile")
+    fmt.Println("  launchium clean -profile=test   Clean the 'test' profile")
+    fmt.Println("  launchium list               List all available profiles")
 }
 
 // Helper styles for application UI
@@ -651,12 +714,62 @@ func (cm *ChromiumManager) View() string {
 }
 
 func main() {
-	// Use physical screen for terminal environments
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
-	
-	// Set explicit sizing
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error: %v", err)
-		os.Exit(1)
-	}
+    // Define application version
+    const VERSION = "0.1.0"
+    
+    // Check for command-line arguments
+    cmd, profileName, hasCmdArgs := parseCommandLine()
+    
+    if hasCmdArgs {
+        // Initialize model to load configurations
+        cm := initialModel()
+        
+        // Handle commands
+        switch cmd {
+        case "launch":
+            fmt.Println("Launching browser with profile:", profileName)
+            message := cm.launchBrowser(profileName)
+            fmt.Println(message)
+            
+        case "clean":
+            fmt.Println("Cleaning profile:", profileName)
+            profilePath := filepath.Join(cm.profileDir, profileName)
+            if _, err := os.Stat(profilePath); os.IsNotExist(err) {
+                fmt.Println("Error: Profile directory does not exist")
+            } else {
+                // Clean the profile directory
+                files, err := ioutil.ReadDir(profilePath)
+                if err != nil {
+                    fmt.Printf("Error reading directory: %s\n", err)
+                } else {
+                    for _, file := range files {
+                        filePath := filepath.Join(profilePath, file.Name())
+                        if err := os.RemoveAll(filePath); err != nil {
+                            fmt.Printf("Error cleaning profile: %s\n", err)
+                            os.Exit(1)
+                        }
+                    }
+                    fmt.Printf("Profile '%s' completely cleared and reset\n", profileName)
+                }
+            }
+            
+        case "list":
+            fmt.Println("Available profiles:")
+            for name := range cm.profiles {
+                fmt.Println("  -", name)
+            }
+            
+        case "version":
+            fmt.Printf("Launchium version %s\n", VERSION)
+        }
+        
+        os.Exit(0)
+    }
+    
+    // If no command-line arguments, start the interactive UI
+    p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+    if _, err := p.Run(); err != nil {
+        fmt.Printf("Error: %v", err)
+        os.Exit(1)
+    }
 }
