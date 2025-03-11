@@ -2,18 +2,24 @@
 
 A terminal-based application for managing multiple Chromium/Chrome browser profiles with different settings, proxies, and configurations. This tool helps you maintain separate browsing environments for different purposes.
 
+Primary purpose and inspiration was to regain similar functionality to the NCC Group's autochrome tool (https://github.com/nccgroup/autochrome).
+
 ![Launchium Screenshot](https://github.com/user-attachments/assets/2f5adc64-cf61-463c-ad67-819b2b828493)
 
 
 ## Features
 
 - **Multiple Profile Support**: Create and manage separate browser profiles
-- **Proxy Configuration**: Set different proxy settings for each profile
+- **Proxy Configurations**: Set different proxy settings for each profile
 - **Custom Flags**: Configure browser launch flags for each profile
 - **Profile Cleaning**: Reset profiles to a clean state
 - **GPU Artifact Suppression**: Eliminate visual glitches with optimized settings
 - **API Warning Suppression**: Remove annoying Google API key warnings
 - **Terminal UI**: Beautiful, keyboard-driven interface
+
+## To-Do
+- **Chromium Management**: Download/manage and use different versions of chromium
+- **Extension Management**: Download/manage extensions for use in different profiles
 
 ## Installation
 
