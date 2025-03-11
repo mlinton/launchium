@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime" //added for platform detection
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 )
 
 // Profile represents a Chromium browser profile
@@ -101,6 +103,85 @@ func printHelp() {
     fmt.Println("  launchium launch -profile=work  Launch browser with 'work' profile")
     fmt.Println("  launchium clean -profile=test   Clean the 'test' profile")
     fmt.Println("  launchium list               List all available profiles")
+}
+
+// Detect platform and set paths accordingly
+func (cm *ChromiumManager) detectPlatform() {
+    // Set platform-specific paths
+    switch runtime.GOOS {
+    case "darwin": // macOS
+        cm.chromePath = "/Applications/Chromium.app/Contents/MacOS/Chromium"
+        if _, err := os.Stat(cm.chromePath); os.IsNotExist(err) {
+            cm.chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        }
+        
+    case "windows":
+        // Common paths for Windows
+        chromePaths := []string{
+            filepath.Join(os.Getenv("ProgramFiles"), "Chromium", "Application", "chrome.exe"),
+            filepath.Join(os.Getenv("ProgramFiles(x86)"), "Chromium", "Application", "chrome.exe"),
+            filepath.Join(os.Getenv("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe"),
+            filepath.Join(os.Getenv("ProgramFiles(x86)"), "Google", "Chrome", "Application", "chrome.exe"),
+            filepath.Join(os.Getenv("LocalAppData"), "Chromium", "Application", "chrome.exe"),
+            filepath.Join(os.Getenv("LocalAppData"), "Google", "Chrome", "Application", "chrome.exe"),
+        }
+        
+        // Try each path
+        for _, path := range chromePaths {
+            if _, err := os.Stat(path); err == nil {
+                cm.chromePath = path
+                break
+            }
+        }
+        
+    case "linux":
+        // Common paths for Linux
+        chromePaths := []string{
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/snap/bin/chromium",
+        }
+        
+        // Try each path
+        for _, path := range chromePaths {
+            if _, err := os.Stat(path); err == nil {
+                cm.chromePath = path
+                break
+            }
+        }
+    }
+    
+    // If no browser found, set a default and log a warning
+    if cm.chromePath == "" {
+        cm.err = fmt.Errorf("Could not find Chrome or Chromium browser. Please specify path manually")
+        if runtime.GOOS == "windows" {
+            cm.chromePath = filepath.Join(os.Getenv("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe")
+        } else {
+            cm.chromePath = "/usr/bin/google-chrome"
+        }
+    }
+}
+
+// update the profile path to be platform-appropriate
+
+func (cm *ChromiumManager) setProfilePath() {
+    homeDir, _ := os.UserHomeDir()
+    
+    switch runtime.GOOS {
+    case "darwin", "linux":
+        // Unix-style paths for macOS and Linux
+        cm.profileDir = filepath.Join(homeDir, ".launchium", "profiles")
+    case "windows":
+        // Windows typically uses AppData for configuration
+        cm.profileDir = filepath.Join(homeDir, "AppData", "Local", "Launchium", "profiles")
+    default:
+        // Fallback
+        cm.profileDir = filepath.Join(homeDir, ".launchium", "profiles")
+    }
+    
+    cm.configFile = filepath.Join(cm.profileDir, "profiles.conf")
 }
 
 // Helper styles for application UI
@@ -263,7 +344,7 @@ func (cm *ChromiumManager) launchBrowser(profileName string) string {
 		ioutil.WriteFile(prefsFile, []byte(prefsData), 0644)
 	}
 
-	// Build command line with all arguments - use a different approach
+	// Build command line with all arguments
 	cmdArgs := []string{}
 	
 	// Add profile directory
@@ -315,38 +396,74 @@ func (cm *ChromiumManager) launchBrowser(profileName string) string {
 		"--disable-threaded-animation",
 		"--disable-webgl-image-chromium",
 		"--force-dark-mode",
+		// Ignore Certificat errors
+		"--ignore-certificate-errors",
 	}
 	
 	for _, flag := range standardFlags {
 		cmdArgs = append(cmdArgs, flag)
 	}
 	
-	// Try different approaches for launching
+	// Platform-specific browser launching
 	var err error
 	
-	// First attempt: standard exec approach
-	cmd := exec.Command(cm.chromePath, cmdArgs...)
-	err = cmd.Start()
-	
-	// If that fails, try the open command on macOS
-	if err != nil {
-		// Create a shell script in temp directory
-		scriptPath := filepath.Join(os.TempDir(), "launch_chrome.sh")
-		scriptContent := "#!/bin/bash\n" + cm.chromePath + " " + strings.Join(cmdArgs, " ") + " &\n"
-		if err := ioutil.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
-			return fmt.Sprintf("Error creating launcher script: %s", err)
+	switch runtime.GOOS {
+	case "darwin": // macOS
+		// First attempt: standard exec approach
+		cmd := exec.Command(cm.chromePath, cmdArgs...)
+		err = cmd.Start()
+		
+		// If that fails, try the open command on macOS
+		if err != nil {
+			// Create a shell script in temp directory
+			scriptPath := filepath.Join(os.TempDir(), "launch_chrome.sh")
+			scriptContent := "#!/bin/bash\n" + cm.chromePath + " " + strings.Join(cmdArgs, " ") + " &\n"
+			if err := ioutil.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+				return fmt.Sprintf("Error creating launcher script: %s", err)
+			}
+			
+			// Execute the script
+			cmd = exec.Command("/bin/bash", scriptPath)
+			if err = cmd.Start(); err != nil {
+				// Last resort - use 'open' command on macOS
+				openArgs := []string{cm.chromePath, "--args"}
+				openArgs = append(openArgs, cmdArgs...)
+				cmd = exec.Command("open", openArgs...)
+				err = cmd.Start()
+			}
 		}
 		
-		// Execute the script
-		cmd = exec.Command("/bin/bash", scriptPath)
-		if err = cmd.Start(); err != nil {
-			// Last resort - use 'open' command on macOS
-			openArgs := []string{cm.chromePath, "--args"}
-			openArgs = append(openArgs, cmdArgs...)
-			cmd = exec.Command("open", openArgs...)
+	case "linux": // Linux
+		// Try normal execution first
+		cmd := exec.Command(cm.chromePath, cmdArgs...)
+		err = cmd.Start()
+		
+		// If that fails, try using xdg-open
+		if err != nil {
+			// Try with nohup
+			cmd = exec.Command("nohup", cm.chromePath)
+			cmd.Args = append(cmd.Args, cmdArgs...)
 			err = cmd.Start()
+			
+			// If nohup fails, try with xdg-open via a temporary desktop file
+			if err != nil {
+				// Create a desktop file
+				desktopPath := filepath.Join(os.TempDir(), "launchium_chrome.desktop")
+				desktopContent := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=Launchium Chrome\nExec=%s %s\nTerminal=false", 
+											cm.chromePath, strings.Join(cmdArgs, " "))
+				
+				if err := ioutil.WriteFile(desktopPath, []byte(desktopContent), 0755); err == nil {
+					cmd = exec.Command("xdg-open", desktopPath)
+					err = cmd.Start()
+				}
+			}
 		}
-	}
+
+	default:
+        // Fallback for unsupported platforms
+        cmd := exec.Command(cm.chromePath, cmdArgs...)
+        err = cmd.Start()
+    }
 	
 	if err != nil {
 		return fmt.Sprintf("Error launching browser: %s", err)
