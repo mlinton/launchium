@@ -83,7 +83,7 @@ func initialModel() *ChromiumManager {
 	}
 
 	cm.mainList = list.New(items, delegate, 80, 24)
-	cm.mainList.Title = "Chromium Profile Manager"
+	cm.mainList.Title = "Launchium - Chromium Profile Manager"
 	cm.mainList.SetShowStatusBar(true)
 	cm.mainList.SetFilteringEnabled(false)
 	
