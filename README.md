@@ -2,7 +2,8 @@
 
 A terminal-based application for managing multiple Chromium/Chrome browser profiles with different settings, proxies, and configurations. This tool helps you maintain separate browsing environments for different purposes.
 
-![Chromium Profile Manager Screenshot](https://via.placeholder.com/800x450.png?text=Chromium+Profile+Manager)
+![Launchium Screenshot](https://github.com/user-attachments/assets/2f5adc64-cf61-463c-ad67-819b2b828493)
+
 
 ## Features
 
